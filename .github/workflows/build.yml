@@ -4,19 +4,26 @@ on: [push]
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-13
+
     steps:
       - uses: actions/checkout@v3
 
+      - name: Show Xcode version
+        run: xcodebuild -version
+
       - name: Compile dylib
         run: |
-          clang -dynamiclib \
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          clang \
+            -dynamiclib \
             -fobjc-arc \
+            -arch arm64 \
+            -isysroot $SDK \
             -framework UIKit \
             -framework Foundation \
             -framework CoreGraphics \
-            -target arm64-apple-ios14.0 \
-            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+            -miphoneos-version-min=14.0 \
             -o SkinChanger.dylib \
             tweak.mm
 
