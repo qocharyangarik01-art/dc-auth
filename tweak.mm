@@ -352,7 +352,13 @@ __attribute__((constructor)) static void initialize() {
             }
         }
         if (!window) {
-            window = [UIApplication sharedApplication].keyWindow;
+            // Запасной безопасный вариант получения окна для старых версий или fallback
+            for (UIWindow *win in [UIApplication sharedApplication].windows) {
+                if (win.isKeyWindow) {
+                    window = win;
+                    break;
+                }
+            }
         }
         if (!window) {
             window = [UIApplication sharedApplication].windows.firstObject;
