@@ -1,0 +1,24 @@
+workflows:
+  build-dylib:
+    name: Build SkinChanger dylib
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+
+    scripts:
+      - name: Compile dylib
+        script: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          clang \
+            -dynamiclib \
+            -fobjc-arc \
+            -arch arm64 \
+            -isysroot $SDK \
+            -framework UIKit \
+            -framework Foundation \
+            -framework CoreGraphics \
+            -miphoneos-version-min=14.0 \
+            -o SkinChanger.dylib \
+            tweak.mm
+
+    artifacts:
+      - SkinChanger.dylib
