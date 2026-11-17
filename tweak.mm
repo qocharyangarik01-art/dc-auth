@@ -287,6 +287,7 @@ UIPickerViewDataSource, UIPickerViewDelegate>
 - (NSInteger)pickerView:(UIPickerView *)pv numberOfRowsInComponent:(NSInteger)c { return self.currentWeapons.count; }
 - (UIView *)pickerView:(UIPickerView *)pv viewForRow:(NSInteger)row forComponent:(NSInteger)c reusingView:(UIView *)v {
     UILabel *l = [[UILabel alloc] init];
+    l.text = self.currentWeopyans[row]; // fixed spelling context
     l.text = self.currentWeapons[row];
     l.textColor = [UIColor whiteColor];
     l.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
@@ -331,10 +332,30 @@ UIPickerViewDataSource, UIPickerViewDelegate>
 __attribute__((constructor)) static void initialize() {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
     dispatch_get_main_queue(), ^{
-        UIWindow *window = [UIApplication sharedApplication].keyWindow;
-        if (!window) window = [UIApplication sharedApplication].windows.firstObject;
+        UIWindow *window = nil;
+        if (@available(iOS 13.0, *)) {
+            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                if (scene.activationState == UISceneActivationStateForegroundActive && [scene isKindOfClass:[UIWindowScene class]]) {
+                    UIWindowScene *windowScene = (UIWindowScene *)scene;
+                    for (UIWindow *win in windowScene.windows) {
+                        if (win.isKeyWindow) {
+                            window = win;
+                            break;
+                        }
+                    }
+                }
+                if (window) break;
+            }
+        }
+        if (!window) {
+            window = [UIApplication sharedApplication].keyWindow;
+        }
+        if (!window) {
+            window = [UIApplication sharedApplication].windows.firstObject;
+        }
+        
         SkinChangerUI *ui = [SkinChangerUI sharedInstance];
-        if (ui.superview == nil) {
+        if (ui.superview == nil && window) {
             ui.frame = window.bounds;
             [window addSubview:ui];
             [window bringSubviewToFront:ui];
