@@ -107,10 +107,15 @@ UIPickerViewDataSource, UIPickerViewDelegate>
 @property (nonatomic, strong) NSArray *currentSkins;
 @property (nonatomic, assign) NSInteger selectedWeaponIndex;
 @property (nonatomic, assign) NSInteger selectedSkinIndex;
+
 + (instancetype)sharedInstance;
 - (void)show;
 - (void)hide;
 - (void)toggle;
+- (void)setupToggleButton;
+- (void)setupMenuContainer;
+- (void)loadCategory:(WeaponCategory)category;
+- (void)loadSkinsForWeaponAtIndex:(NSInteger)index;
 @end
 
 @implementation SkinChangerUI
@@ -151,4 +156,215 @@ UIPickerViewDataSource, UIPickerViewDelegate>
     self.toggleButton.titleLabel.font = [UIFont boldSystemFontOfSize:18];
     [self.toggleButton addTarget:self action:@selector(toggle) forControlEvents:UIControlEventTouchUpInside];
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleTogglePan:)];
-    [self
+    [self.toggleButton addGestureRecognizer:pan];
+    [self addSubview:self.toggleButton];
+}
+
+- (void)handleTogglePan:(UIPanGestureRecognizer *)gesture {
+    CGPoint t = [gesture translationInView:self];
+    CGPoint c = gesture.view.center;
+    c.x = MAX(22, MIN(self.bounds.size.width-22, c.x+t.x));
+    c.y = MAX(22, MIN(self.bounds.size.height-22, c.y+t.y));
+    gesture.view.center = c;
+    [gesture setTranslation:CGPointZero inView:self];
+}
+
+- (void)setupMenuContainer {
+    CGFloat w = MIN(self.bounds.size.width*0.88, 420);
+    CGFloat h = self.bounds.size.height*0.75;
+    CGFloat x = (self.bounds.size.width-w)/2;
+    CGFloat y = (self.bounds.size.height-h)/2;
+    self.menuContainer = [[UIView alloc] initWithFrame:CGRectMake(x,y,w,h)];
+    self.menuContainer.backgroundColor = [UIColor colorWithRed:0.08 green:0.08 blue:0.08 alpha:0.97];
+    self.menuContainer.layer.cornerRadius = 12;
+    self.menuContainer.layer.borderWidth = 1;
+    self.menuContainer.layer.borderColor = [UIColor colorWithWhite:0.25 alpha:1.0].CGColor;
+    self.menuContainer.clipsToBounds = YES;
+    self.menuContainer.hidden = YES;
+
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0,0,w,56)];
+    header.backgroundColor = [UIColor colorWithRed:0.06 green:0.06 blue:0.06 alpha:1.0];
+    UIView *accent = [[UIView alloc] initWithFrame:CGRectMake(0,0,3,56)];
+    accent.backgroundColor = [UIColor colorWithRed:1.0 green:0.8 blue:0.0 alpha:1.0];
+    [header addSubview:accent];
+    UILabel *logo = [[UILabel alloc] initWithFrame:CGRectMake(14,8,200,20)];
+    logo.text = @"KURIAN.CF";
+    logo.font = [UIFont boldSystemFontOfSize:15];
+    logo.textColor = [UIColor whiteColor];
+    [header addSubview:logo];
+    UILabel *build = [[UILabel alloc] initWithFrame:CGRectMake(14,30,200,14)];
+    build.text = @"BUILD v1.4.1";
+    build.font = [UIFont systemFontOfSize:11];
+    build.textColor = [UIColor colorWithWhite:0.5 alpha:1.0];
+    [header addSubview:build];
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(0,16,w,24)];
+    title.text = @"• SKIN CHANGER";
+    title.font = [UIFont boldSystemFontOfSize:14];
+    title.textColor = [UIColor whiteColor];
+    title.textAlignment = NSTextAlignmentCenter;
+    [header addSubview:title];
+    UIPanGestureRecognizer *drag = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleMenuDrag:)];
+    [header addGestureRecognizer:drag];
+    [self.menuContainer addSubview:header];
+
+    self.selectedLabel = [[UILabel alloc] initWithFrame:CGRectMake(16,64,w-32,20)];
+    self.selectedLabel.text = @"Selected: —";
+    self.selectedLabel.font = [UIFont boldSystemFontOfSize:13];
+    self.selectedLabel.textColor = [UIColor colorWithRed:0.3 green:1.0 blue:0.4 alpha:1.0];
+    [self.menuContainer addSubview:self.selectedLabel];
+
+    self.categorySegment = [[UISegmentedControl alloc] initWithItems:@[@"Knives",@"Primary",@"Pistols",@"Gloves"]];
+    self.categorySegment.frame = CGRectMake(12,92,w-24,32);
+    self.categorySegment.selectedSegmentIndex = 0;
+    self.categorySegment.backgroundColor = [UIColor colorWithWhite:0.15 alpha:1.0];
+    [self.categorySegment setTitleTextAttributes:@{NSForegroundColorAttributeName:[UIColor whiteColor]} forState:UIControlStateNormal];
+    [self.categorySegment setTitleTextAttributes:@{NSForegroundColorAttributeName:[UIColor blackColor]} forState:UIControlStateSelected];
+    if (@available(iOS 13.0, *)) {
+        self.categorySegment.selectedSegmentTintColor = [UIColor colorWithRed:1.0 green:0.8 blue:0.0 alpha:1.0];
+    }
+    [self.categorySegment addTarget:self action:@selector(categoryChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.menuContainer addSubview:self.categorySegment];
+
+    self.weaponPicker = [[UIPickerView alloc] initWithFrame:CGRectMake(12,132,w-24,90)];
+    self.weaponPicker.dataSource = self;
+    self.weaponPicker.delegate = self;
+    self.weaponPicker.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
+    self.weaponPicker.layer.cornerRadius = 8;
+    [self.menuContainer addSubview:self.weaponPicker];
+
+    UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
+    layout.minimumInteritemSpacing = 8;
+    layout.minimumLineSpacing = 8;
+    layout.sectionInset = UIEdgeInsetsMake(8,8,8,8);
+    CGFloat cellSize = (w-24-32)/5;
+    layout.itemSize = CGSizeMake(cellSize, cellSize+10);
+    CGFloat gridY = 232;
+    CGFloat gridH = h-gridY-56;
+    self.skinGrid = [[UICollectionView alloc] initWithFrame:CGRectMake(12,gridY,w-24,gridH) collectionViewLayout:layout];
+    self.skinGrid.backgroundColor = [UIColor colorWithWhite:0.1 alpha:1.0];
+    self.skinGrid.layer.cornerRadius = 8;
+    self.skinGrid.dataSource = self;
+    self.skinGrid.delegate = self;
+    [self.skinGrid registerClass:[SkinCell class] forCellWithReuseIdentifier:@"SkinCell"];
+    [self.menuContainer addSubview:self.skinGrid];
+
+    UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    closeBtn.frame = CGRectMake(0,h-50,w,50);
+    closeBtn.backgroundColor = [UIColor colorWithWhite:0.06 alpha:1.0];
+    [closeBtn setTitle:@"CLOSE MENU" forState:UIControlStateNormal];
+    [closeBtn setTitleColor:[UIColor colorWithWhite:0.6 alpha:1.0] forState:UIControlStateNormal];
+    closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:13];
+    [closeBtn addTarget:self action:@selector(hide) forControlEvents:UIControlEventTouchUpInside];
+    [self.menuContainer addSubview:closeBtn];
+
+    [self addSubview:self.menuContainer];
+}
+
+- (void)handleMenuDrag:(UIPanGestureRecognizer *)gesture {
+    CGPoint t = [gesture translationInView:self];
+    self.menuContainer.center = CGPointMake(self.menuContainer.center.x+t.x, self.menuContainer.center.y+t.y);
+    [gesture setTranslation:CGPointZero inView:self];
+}
+
+- (void)loadCategory:(WeaponCategory)category {
+    _currentCategory = category;
+    self.currentWeapons = weaponData()[@(category)];
+    _selectedWeaponIndex = 0;
+    [self loadSkinsForWeaponAtIndex:0];
+    [self.weaponPicker reloadAllComponents];
+    [self.weaponPicker selectRow:0 inComponent:0 animated:NO];
+}
+
+- (void)loadSkinsForWeaponAtIndex:(NSInteger)index {
+    if (index >= (NSInteger)self.currentWeapons.count) return;
+    NSString *weapon = self.currentWeapons[index];
+    self.currentSkins = skinData()[weapon] ?: @[];
+    _selectedSkinIndex = 0;
+    [self.skinGrid reloadData];
+    self.selectedLabel.text = [NSString stringWithFormat:@"Selected: %@", weapon];
+}
+
+- (void)categoryChanged:(UISegmentedControl *)seg {
+    [self loadCategory:(WeaponCategory)seg.selectedSegmentIndex];
+}
+
+- (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)pv { return 1; }
+- (NSInteger)pickerView:(UIPickerView *)pv numberOfRowsInComponent:(NSInteger)c { return self.currentWeapons.count; }
+- (UIView *)pickerView:(UIPickerView *)pv viewForRow:(NSInteger)row forComponent:(NSInteger)c reusingView:(UIView *)v {
+    UILabel *l = [[UILabel alloc] init];
+    l.text = self.currentWeapons[row];
+    l.textColor = [UIColor whiteColor];
+    l.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    l.textAlignment = NSTextAlignmentCenter;
+    return l;
+}
+- (void)pickerView:(UIPickerView *)pv didSelectRow:(NSInteger)row inComponent:(NSInteger)c {
+    _selectedWeaponIndex = row;
+    [self loadSkinsForWeaponAtIndex:row];
+}
+
+- (NSInteger)collectionView:(UICollectionView *)cv numberOfItemsInSection:(NSInteger)s { return self.currentSkins.count; }
+- (UICollectionViewCell *)collectionView:(UICollectionView *)cv cellForItemAtIndexPath:(NSIndexPath *)ip {
+    SkinCell *cell = [cv dequeueReusableCellWithReuseIdentifier:@"SkinCell" forIndexPath:ip];
+    cell.nameLabel.text = self.currentSkins[ip.row];
+    [cell setSelectedState:ip.row == _selectedSkinIndex];
+    return cell;
+}
+- (void)collectionView:(UICollectionView *)cv didSelectItemAtIndexPath:(NSIndexPath *)ip {
+    NSInteger prev = _selectedSkinIndex;
+    _selectedSkinIndex = ip.row;
+    self.selectedLabel.text = [NSString stringWithFormat:@"Selected: %@", self.currentSkins[ip.row]];
+    [cv reloadItemsAtIndexPaths:@[[NSIndexPath indexPathForRow:prev inSection:0], ip]];
+    NSLog(@"[SkinChanger] %@ -> %@", self.currentWeapons[_selectedWeaponIndex], self.currentSkins[ip.row]);
+}
+
+- (void)show {
+    self.menuContainer.hidden = NO;
+    self.menuContainer.alpha = 0;
+    [UIView animateWithDuration:0.2 animations:^{ self.menuContainer.alpha = 1.0; }];
+}
+- (void)hide {
+    [UIView animateWithDuration:0.15 animations:^{ self.menuContainer.alpha = 0; }
+     completion:^(BOOL f){ self.menuContainer.hidden = YES; }];
+}
+- (void)toggle {
+    self.menuContainer.hidden ? [self show] : [self hide];
+}
+
+// ---- INJECTION ENTRY POINT ----
+
+__attribute__((constructor)) static void initialize() {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+    dispatch_get_main_queue(), ^{
+        UIWindow *window = nil;
+        if (@available(iOS 13.0, *)) {
+            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                if (scene.activationState == UISceneActivationStateForegroundActive && [scene isKindOfClass:[UIWindowScene class]]) {
+                    UIWindowScene *windowScene = (UIWindowScene *)scene;
+                    for (UIWindow *win in windowScene.windows) {
+                        if (win.isKeyWindow) {
+                            window = win;
+                            break;
+                        }
+                    }
+                }
+                if (window) break;
+            }
+        }
+        if (!window) {
+            window = [UIApplication sharedApplication].keyWindow;
+        }
+        if (!window) {
+            window = [UIApplication sharedApplication].windows.firstObject;
+        }
+        
+        SkinChangerUI *ui = [SkinChangerUI sharedInstance];
+        if (ui.superview == nil && window) {
+            ui.frame = window.bounds;
+            [window addSubview:ui];
+            [window bringSubviewToFront:ui];
+        }
+    });
+}
+
+@end
