@@ -8,7 +8,7 @@ workflows:
       - name: Compile dylib
         script: |
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          clang \
+          clang++ \
             -dynamiclib \
             -fobjc-arc \
             -arch arm64 \
